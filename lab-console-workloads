@@ -1,0 +1,124 @@
+#!/bin/bash
+#
+# Copyright 2018 Red Hat, Inc.
+#
+# NAME
+#     lab-console-workloads - lab script for DO280-OCP4
+#
+# SYNOPSIS
+#     lab-console-workloads {start|finish}
+#
+#        start  - prepare the system for starting the lab
+#        finish - perform post-lab finish
+#
+# DESCRIPTION
+#     This script, based on singular argument, either does start or finish for
+#     the [name of the exercise]
+#
+# CHANGELOG
+#   * Tue Dec 10 2019 Joel Birchler <jbirchler@redhat.com>
+#   - initial creation
+
+PATH=/usr/bin:/bin:/usr/sbin:/sbin:/root/bin:/usr/local/bin
+declare -a valid_commands=(start finish)
+
+# Change these variables to match your exercise
+this='console-workloads'
+project='console-apps' # common project across ch11
+title='Guided Exercise: Managing Workloads'
+
+# Do not change these variables
+target='workstation'
+run_as_root='true'
+
+
+function lab_start {
+  ocp4_print_prereq_header
+  ocp4_is_cluster_up
+
+  ocp4_print_setup_header
+  ocp4_install_oc
+  ocp4_add_standard_users
+  ocp4_add_self_provisioing
+
+  print_line
+  print_line " Preparing the student's cluster:"
+  ocp4_grab_lab_files
+
+  # Create the project (if it doesn't exist)
+  if ! oc get project "${project}"
+  then
+    pad2 "Create project '${project}'"
+    if oc new-project "${project}"
+    then
+      print_SUCCESS
+    else
+      print_FAIL
+    fi
+  fi
+
+  # Create the project-team group (if it doesn't exist)
+  if ! oc get group project-team
+  then
+    pad2 "Create group 'project-team'"
+    if oc create -f - <<PROJECT_TEAM
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: project-team
+users:
+- developer
+- tester
+PROJECT_TEAM
+    then
+      print_SUCCESS
+    else
+      print_FAIL
+    fi
+  fi
+
+  # Create the project-team RoleBinding (if it doesn't exist)
+  if ! oc get -n console-apps rolebinding team
+  then
+    pad2 "Create rolebinding 'team'"
+    if oc create -n console-apps -f - <<TEAM_ROLE_BINDING
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: team
+    namespace: console-apps
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: edit
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: project-team
+TEAM_ROLE_BINDING
+    then
+      print_SUCCESS
+    else
+      print_FAIL
+    fi
+  fi
+
+  ocp4_print_setup_footer
+}
+
+
+function lab_finish {
+  ocp4_print_cleanup_header
+  ocp4_cleanup_lab_files
+  ocp4_print_cleanup_footer
+}
+
+
+
+############### Don't EVER change anything below this line ###############
+
+# Source library of functions
+source /usr/local/lib/${function_lib}
+source /usr/local/lib/${platform_lib}
+
+grading_main_program "$@"
